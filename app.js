@@ -6,7 +6,6 @@ var methodOverride = require('method-override');
 var path = require('path');
 
 var helpers = require('./helpers');
-var blog = require('./blog');
 
 var app = express();
 app.set('port', process.env.PORT || 3000);
@@ -22,11 +21,10 @@ app.listen(app.get('port'), function() {
   console.log('Express server listening on port ' + app.get('port'));
 });
 
-// Preview Route
-app.route('/preview').get(helpers.preview);
-
-// Blog Homepage Route
-app.route(['/', '/blog']).get(blog.bloghome);
-
-// Blog Post Route
-app.route('/blog/:uid').get(blog.post);
+helpers.quickRoutes(app, {
+  rewriteRoute: {
+    '/bloghome': ['/', '/blog'],
+    '/post/:post_uid': '/blog/:post_uid',
+  },
+  rewriteKey: function (key) { return key.replace('.', '_'); },
+});
