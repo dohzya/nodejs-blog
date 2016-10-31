@@ -21,8 +21,5 @@ module.exports = {
     }
     return '/';
   },
-  onPrismicError: function(err, req, res) {
-    res.status(500)
-      .send("Error 500: " + err.message);
-  }
+
 };

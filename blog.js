@@ -1,64 +1,43 @@
 var prismic = require('prismic-nodejs');
-var configuration = require('./prismic-configuration');
-
-// Returns a Promise
-function api(req, res) {
-  // So we can use this information in the views
-  res.locals.ctx = {
-    endpoint: configuration.apiEndpoint,
-    linkResolver: configuration.linkResolver
-  };
-  return prismic.api(configuration.apiEndpoint, {
-    accessToken: configuration.accessToken,
-    req: req
-  });
-}
+var helpers = require('./helpers');
 
 exports.bloghome = function(req, res) {
-  api(req, res).then(function(api) {
-    return api.query(prismic.Predicates.at("document.type", "bloghome"));
-  }).then(function(bloghome) {
-    if(bloghome.results[0]) {
-      var page = currentPage(req);
-      var options = {
-        'page' : page,
-        'orderings' :'[my.post.date desc]'
-      };
-      api(req, res).then(function(api) {
-        return api.query(prismic.Predicates.at("document.type", "post"), options);
-      }).then(function(response) {
-        res.render('bloghome', {
-          'bloghome' : bloghome.results[0],
-          'posts' : response.results
-        });
-      });
-    } else {
-      res.status(404)
-        .send('Not found');
-    }
-  }).catch(function(err) {
-    handleError(err, req, res);
-  });
+  helpers.api(res).then(function(api) {
+    api.getSingle('bloghome').then(function(bloghome) {
+      if(bloghome) {
+        var page = req.params.p || '1';
+        var options = {
+          page: page,
+          orderings:' [my.post.date desc]',
+        };
+        api
+          .query(prismic.Predicates.at('document.type', 'post'), options)
+          .then(function(response) {
+            res.render('bloghome', {
+              bloghome: bloghome,
+              posts: response.results,
+            });
+          });
+      } else {
+        res.status(404).send('Not found');
+      }
+    });
+  }).catch(helpers.onError(res));
 };
 
 exports.post = function(req, res) {
   var uid = req.params.uid;
-  api(req, res).then(function(api) {
-    return api.getByUID('post', uid);
-  }).then(function(post) {
-    if(post) {
-      res.render('post', {
-        'post': post
+  helpers.api(res).then(function(api) {
+    return api
+      .getByUID('post', uid)
+      .then(function(post) {
+        if(post) {
+          res.render('post', {
+            post: post,
+          });
+        } else {
+          res.status(404).send('Not found');
+        }
       });
-    } else {
-      res.status(404)
-        .send('Not found');
-    }
-  }).catch(function(err) {
-    handleError(err, req, res);
-  });
+  }).catch(helpers.onError(res));
 };
-
-function currentPage(request) {
-  return request.params.p || '1';
-}

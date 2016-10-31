@@ -1,46 +1,29 @@
+var express = require('express');
+var favicon = require('serve-favicon');
+var logger = require('morgan');
+var bodyParser = require('body-parser');
+var methodOverride = require('method-override');
+var path = require('path');
 
-/**
- * Module dependencies.
- */
-var prismic = require('prismic-nodejs');
-var app = require('./config');
-var configuration = require('./prismic-configuration');
-var PORT = app.get('port');
+var helpers = require('./helpers');
 var blog = require('./blog');
 
-// Returns a Promise
-function api(req, res) {
-  // So we can use this information in the views
-  res.locals.ctx = {
-    endpoint: configuration.apiEndpoint,
-    linkResolver: configuration.linkResolver
-  };
-  return prismic.api(configuration.apiEndpoint, {
-    accessToken: configuration.accessToken,
-    req: req
-  });
-}
+var app = express();
+app.set('port', process.env.PORT || 3000);
+app.set('views', path.join(__dirname, 'views'));
+app.set('view engine', 'pug');
+app.use(favicon("public/images/punch.png"));
+app.use(logger('dev'));
+app.use(bodyParser());
+app.use(methodOverride());
+app.use(express.static(path.join(__dirname, 'public')));
 
-function handleError(err, req, res) {
-  if (err.status == 404) {
-    res.status(404).send("404 not found");
-  } else {
-    res.status(500).send("Error 500: " + err.message);
-  }
-}
-
-app.listen(PORT, function() {
-  console.log('Express server listening on port ' + PORT);
+app.listen(app.get('port'), function() {
+  console.log('Express server listening on port ' + app.get('port'));
 });
 
 // Preview Route
-app.route('/preview').get(function(req, res) {
-  api(req, res).then(function(api) {
-    return prismic.preview(api, configuration.linkResolver, req, res);
-  }).catch(function(err) {
-    handleError(err, req, res);
-  });
-});
+app.route('/preview').get(helpers.preview);
 
 // Blog Homepage Route
 app.route(['/', '/blog']).get(blog.bloghome);
