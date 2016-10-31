@@ -22,4 +22,16 @@ module.exports = {
     return '/';
   },
 
+  quickRoutes: {
+    // nolog: true,
+    // nopreview: true,
+    // exclude: ['/bloghome'],
+    // only: ['/bloghome'],
+    rewriteRoute: {
+      '/bloghome': ['/', '/blog'],
+      '/post/:post_uid': '/blog/:post_uid',
+    },
+    rewriteKey: function (key) { return key.replace('.', '_'); },
+  },
+
 };

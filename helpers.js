@@ -2,8 +2,9 @@ var prismic = require('prismic-nodejs');
 var configuration = require('./prismic-configuration');
 
 exports.quickRoutes = function(app, options) {
-  if (!options) options = {};
+  if (!options) options = configuration.quickRoutes || {};
   if (!options.rewriteRoute) options.rewriteRoute = {};
+  if (!options.exclude) options.exclude = [];
   return getApi().then(function (api) {
     var genRoutes = {};
     function addAction(route, action) {
@@ -18,7 +19,7 @@ exports.quickRoutes = function(app, options) {
       app.get(rewritten, action);
       genRoutes[rewritten] = action;
     }
-    api.quickRoutes.map(function(quickRoute) {
+    api.quickRoutes.forEach(function(quickRoute) {
       if (!quickRoute.enabled) return;
       var rewriteKey = options.rewriteKey || function (key) { return key; };
       var route = '/' + quickRoute.fragments.map(function(fragment) {
@@ -29,6 +30,8 @@ exports.quickRoutes = function(app, options) {
           console.log('Unknown fragment kind: ', fragment);
         }
       }).join('/');
+      if (options.only && options.only.indexOf(route) < 0) return;
+      if (options.exclude.indexOf(route) >= 0) return;
       addAction(route, function action(req, res) {
         exports.api(res).then(function (api) {
           function fetch(idx, fetched) {
