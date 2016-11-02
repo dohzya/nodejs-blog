@@ -11,10 +11,48 @@ exports.init = function (app, options) {
     exclude: [],
     rewriteKey: identity,
   }, options || configuration.quickRoutes || {});
-  function rewriteRoute(route) {
-    options.rewriteRoute.forEach(function (keyvalue) {
-      var key = keyvalue[0];
-      var value = keyvalue[1];
+
+  // these functions allow to define route rewritters like
+  // {'/post/:uid': '/blog/:uid'}
+  // so they will be transformed into
+  // [[new RegExp('/post/:([^/]+)'), '/blog/$1']]
+  function transformRouteRewrite(keyvalue, keepVariables) {
+    var key = keyvalue[0];
+    var value = keyvalue[1];
+    if (new RegExp('/:').test(key)) {
+      var refId = 0;
+      var refs = {};
+      key = new RegExp(key.replace(new RegExp('/:([^/]+)'), function (_, variable) {
+        refId++;
+        refs[variable] = '$' + refId;
+        if (keepVariables) return '/(:[^/]+)';
+        return '/:([^/]+)';
+      }));
+      value = value.replace(new RegExp('/:([^/]+)'), function (_, variable) {
+        return '/' + refs[variable];
+      });
+    }
+    return {key: key, value: value};
+  }
+  var routeRewrites;
+  if (Array.isArray(options.rewriteRoute)) {
+    routeRewrites = options.rewriteRoute;
+  } else {
+    routeRewrites = Object.keys(options.rewriteRoute).map(function (key) {
+      return [key, options.rewriteRoute[key]];
+    });
+  }
+  var routeRewritesKeepVariables = routeRewrites.map(function (keyvalue) {
+    return transformRouteRewrite(keyvalue, true);
+  });
+  var routeRewritesNokeepVariables = routeRewrites.map(function (keyvalue) {
+    return transformRouteRewrite(keyvalue, false);
+  });
+
+  function rewriteRoute(rewriteRoutes, route) {
+    rewriteRoutes.forEach(function (keyvalue) {
+      var key = keyvalue.key;
+      var value = keyvalue.value;
       if (key instanceof RegExp) {
         if (key.test(route)) { route = route.replace(key, value); }
       } else {
@@ -23,11 +61,12 @@ exports.init = function (app, options) {
     })
     return route;
   }
+
   return getApi().then(function (api) {
     var genRoutes = {};
     var reverseRoutes = [];
     function addAction(route, action) {
-      var rewritten = rewriteRoute(route);
+      var rewritten = rewriteRoute(routeRewritesKeepVariables, route);
       if (!options.nolog) {
         if (rewritten != route) {
           console.log("Generate route GET", rewritten, " (" + route + ")");
@@ -139,7 +178,7 @@ exports.init = function (app, options) {
             return '/' + quickRoute.fragments.map(function (fragment) {
               switch (fragment.kind) {
               case "static": return fragment.value;
-              case "dynamic": return encodeURIComponent(doc.uid);
+              case "dynamic": return ':' + encodeURIComponent(doc.uid);
               default: return undefined;
               }
             }).filter(function (el) { return !!el; }).join('/');
@@ -155,7 +194,10 @@ exports.init = function (app, options) {
       var route;
       for (fn of reverseRoutes) {
         route = fn(doc);
-        if (route) { return rewriteRoute(route); }
+        if (route) {
+          if (Array.isArray(route)) route = route[0];
+          return rewriteRoute(routeRewritesNokeepVariables, route);
+        }
       }
     };
     initialized = {

@@ -31,10 +31,16 @@ module.exports = {
     // nopreview: true,
     // exclude: ['/bloghome'],
     // only: ['/bloghome'],
-    rewriteRoute: [
-      ['/bloghome', ['/', '/blog']],
-      [new RegExp('/post/([^/]+)'), '/blog/$1'],
-    ],
+    // rewriteRoute: [
+    //   ['/bloghome', ['/', '/blog']],
+    //   ['/post/:uid', '/blog/:uid'],
+    //   // or use regexp
+    //   // [new RegExp('/post/(:[^/]+)'), '/blog/$1'],
+    // ],
+    rewriteRoute: {
+      '/bloghome': ['/', '/blog'],
+      '/post/:uid': '/blog/:uid',
+    },
     rewriteKey: function (key) { return key.replace('.', '_'); },
   },
 
