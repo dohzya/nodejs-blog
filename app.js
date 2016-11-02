@@ -17,8 +17,8 @@ app.use(bodyParser());
 app.use(methodOverride());
 app.use(express.static(path.join(__dirname, 'public')));
 
-helpers.init(app);
-
-app.listen(app.get('port'), function () {
-  console.log('Express server listening on port ' + app.get('port'));
+helpers.init(app).then(function () {
+  app.listen(app.get('port'), function () {
+    console.log('Express server listening on port ' + app.get('port'));
+  });
 });
