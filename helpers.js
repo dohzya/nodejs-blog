@@ -2,9 +2,11 @@ var prismic = require('prismic-nodejs');
 var configuration = require('./prismic-configuration');
 
 exports.quickRoutes = function(app, options) {
-  if (!options) options = configuration.quickRoutes || {};
-  if (!options.rewriteRoute) options.rewriteRoute = {};
-  if (!options.exclude) options.exclude = [];
+  options = Object.assign({
+    rewriteRoute: {},
+    exclude: [],
+    rewriteKey: function (key) { return key; },
+  }, options || configuration.quickRoutes || {});
   return getApi().then(function (api) {
     var genRoutes = {};
     function addAction(route, action) {
@@ -21,11 +23,10 @@ exports.quickRoutes = function(app, options) {
     }
     api.quickRoutes.forEach(function(quickRoute) {
       if (!quickRoute.enabled) return;
-      var rewriteKey = options.rewriteKey || function (key) { return key; };
       var route = '/' + quickRoute.fragments.map(function(fragment) {
         switch (fragment.kind) {
         case "static": return fragment.value;
-        case "dynamic": return ':' + rewriteKey(fragment.key);
+        case "dynamic": return ':' + options.rewriteKey(fragment.key);
         default:
           console.log('Unknown fragment kind: ', fragment);
         }
@@ -56,7 +57,7 @@ exports.quickRoutes = function(app, options) {
                 return fetch(idx+1, fetched);
               });
             case "withUid":
-              var key = rewriteKey(fetcher.condition.key);
+              var key = options.rewriteKey(fetcher.condition.key);
               return api.getByUID(quickRoute.mask, req.params[key]).then(function (docs) {
                 fetched[fetcher.mask] = docs;
                 return fetch(idx+1, fetched);
