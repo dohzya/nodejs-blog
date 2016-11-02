@@ -33,51 +33,70 @@ exports.quickRoutes = function(app, options) {
       }).join('/');
       if (options.only && options.only.indexOf(route) < 0) return;
       if (options.exclude.indexOf(route) >= 0) return;
-      addAction(route, function action(req, res) {
-        exports.api(res).then(function (api) {
-          function fetch(idx, fetched) {
-            if (idx >= quickRoute.fetchers.length) { return Promise.resolve(fetched); }
-            var fetcher = quickRoute.fetchers[idx];
-            switch (fetcher.condition.kind) {
-            case "all":
-              var queryOpts = {};
-              if (fetcher.condition.sort) {
-                queryOpts.page = req.params.p || '1';
-                var sort_by = fetcher.condition.sort.field;
-                var sort_dir = fetcher.condition.sort.dir == "desc" ? ' desc' : '';
-                queryOpts.orderings = '[' + sort_by + sort_dir + ']';
-              }
-              return api.query(prismic.Predicates.at('document.type', fetcher.mask), queryOpts).then(function (docs) {
-                fetched[fetcher.name || fetcher.mask] = docs.results;
-                return fetch(idx+1, fetched);
-              });
-            case "singleton":
-              return api.getSingle(quickRoute.mask).then(function (docs) {
-                fetched[fetcher.mask] = docs;
-                return fetch(idx+1, fetched);
-              });
-            case "withUid":
-              var key = options.rewriteKey(fetcher.condition.key);
-              return api.getByUID(quickRoute.mask, req.params[key]).then(function (docs) {
-                fetched[fetcher.mask] = docs;
-                return fetch(idx+1, fetched);
-              });
-            default:
-              console.log("Unknown fetcher condition: ", fetcher);
-              return fetch(idx+1, fetched);
+
+      var fetchers = quickRoute.fetchers.map(function(fetcher) {
+        var fn;
+        switch (fetcher.condition && fetcher.condition.kind) {
+        case "all":
+          fn = function(api, req) {
+            var queryOpts = {};
+            if (fetcher.condition.sort) {
+              queryOpts.page = req.params.p || '1';
+              var sort_by = fetcher.condition.sort.field;
+              var sort_dir = fetcher.condition.sort.dir == "desc" ? ' desc' : '';
+              queryOpts.orderings = '[' + sort_by + sort_dir + ']';
             }
+            return api.query(prismic.Predicates.at('document.type', fetcher.mask), queryOpts).then(function (docs) {
+              return docs.results;
+            });
+          };
+          break;
+        case "singleton":
+          fn = function(api) {
+            return api.getSingle(fetcher.mask);
+          };
+          break;
+        case "withUid":
+          var key = options.rewriteKey(fetcher.condition.key);
+          fn = function(api, req) {
+            return api.getByUID(fetcher.mask, req.params[key]);
+          };
+          break;
+        default:
+          console.log("Unknown fetcher condition: ", fetcher);
+          return undefined;
+        }
+        return {
+          variable: fetcher.name || fetcher.mask,
+          fn: fn,
+        };
+      }).filter(function(fetcher) { return !!fetcher; });
+
+      addAction(route, function action(req, res) {
+
+        exports.api(res).then(function(api) {
+          function fetch(idx, fetched) {
+            if (idx >= fetchers.length) { return Promise.resolve(fetched); }
+            var fetcher = fetchers[idx];
+            return fetcher.fn(api, req).then(function(value) {
+              fetched[fetcher.variable] = value;
+              return fetch(idx+1, fetched);
+            });
           }
-          fetch(0, {}).then(function(data) {
+          return fetch(0, {}).then(function(data) {
             res.render(quickRoute.view || quickRoute.mask, data);
-          }).catch(exports.onError(res));
-        });
+          });
+        }).catch(exports.onError(res));
+
       });
     });
     if(!options.nopreview) {
       addAction('/preview', exports.preview);
     }
-    return genRoutes;
-  });
+    return {
+      quickRoutes: genRoutes,
+    };
+  }).catch(function (err) { console.error(err); });
 };
 
 function getApi() {
