@@ -1,7 +1,7 @@
 var prismic = require('prismic-nodejs');
 var configuration = require('./prismic-configuration');
 
-exports.quickRoutes = function(app, options) {
+exports.quickRoutes = function (app, options) {
   options = Object.assign({
     rewriteRoute: {},
     exclude: [],
@@ -21,9 +21,9 @@ exports.quickRoutes = function(app, options) {
       app.get(rewritten, action);
       genRoutes[rewritten] = action;
     }
-    api.quickRoutes.forEach(function(quickRoute) {
+    api.quickRoutes.forEach(function (quickRoute) {
       if (!quickRoute.enabled) return;
-      var route = '/' + quickRoute.fragments.map(function(fragment) {
+      var route = '/' + quickRoute.fragments.map(function (fragment) {
         switch (fragment.kind) {
         case "static": return fragment.value;
         case "dynamic": return ':' + options.rewriteKey(fragment.key);
@@ -34,11 +34,11 @@ exports.quickRoutes = function(app, options) {
       if (options.only && options.only.indexOf(route) < 0) return;
       if (options.exclude.indexOf(route) >= 0) return;
 
-      var fetchers = quickRoute.fetchers.map(function(fetcher) {
+      var fetchers = quickRoute.fetchers.map(function (fetcher) {
         var fn;
         switch (fetcher.condition && fetcher.condition.kind) {
         case "all":
-          fn = function(api, req) {
+          fn = function (api, req) {
             var queryOpts = {};
             if (fetcher.condition.sort) {
               queryOpts.page = req.params.p || '1';
@@ -52,13 +52,13 @@ exports.quickRoutes = function(app, options) {
           };
           break;
         case "singleton":
-          fn = function(api) {
+          fn = function (api) {
             return api.getSingle(fetcher.mask);
           };
           break;
         case "withUid":
           var key = options.rewriteKey(fetcher.condition.key);
-          fn = function(api, req) {
+          fn = function (api, req) {
             return api.getByUID(fetcher.mask, req.params[key]);
           };
           break;
@@ -70,27 +70,27 @@ exports.quickRoutes = function(app, options) {
           variable: fetcher.name || fetcher.mask,
           fn: fn,
         };
-      }).filter(function(fetcher) { return !!fetcher; });
+      }).filter(function (fetcher) { return !!fetcher; });
 
       addAction(route, function action(req, res) {
 
-        exports.api(res).then(function(api) {
+        exports.api(res).then(function (api) {
           function fetch(idx, fetched) {
             if (idx >= fetchers.length) { return Promise.resolve(fetched); }
             var fetcher = fetchers[idx];
-            return fetcher.fn(api, req).then(function(value) {
+            return fetcher.fn(api, req).then(function (value) {
               fetched[fetcher.variable] = value;
               return fetch(idx+1, fetched);
             });
           }
-          return fetch(0, {}).then(function(data) {
+          return fetch(0, {}).then(function (data) {
             res.render(quickRoute.view || quickRoute.mask, data);
           });
         }).catch(exports.onError(res));
 
       });
     });
-    if(!options.nopreview) {
+    if (!options.nopreview) {
       addAction('/preview', exports.preview);
     }
     return {
@@ -162,15 +162,15 @@ function getApi() {
   });
 }
 
-exports.onError = function(res) {
-  return function(err) {
+exports.onError = function (res) {
+  return function (err) {
     console.error(err);
     res.status(500).send("Error 500: " + err.message);
   };
 };
 
 // Returns a Promise
-exports.api = function(res) {
+exports.api = function (res) {
   // So we can use this information in the views
   res.locals.ctx = {
     endpoint: configuration.apiEndpoint,
@@ -179,8 +179,8 @@ exports.api = function(res) {
   return getApi();
 };
 
-exports.preview = function(req, res) {
-  exports.api(res).then(function(api) {
+exports.preview = function (req, res) {
+  exports.api(res).then(function (api) {
     return prismic.preview(api, configuration.linkResolver, req, res);
   });
 };
