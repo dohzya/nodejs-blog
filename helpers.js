@@ -1,16 +1,33 @@
 var prismic = require('prismic-nodejs');
 var configuration = require('./prismic-configuration');
 
-exports.quickRoutes = function (app, options) {
+var initialized = undefined;
+
+function identity(el) { return el }
+
+exports.init = function (app, options) {
   options = Object.assign({
-    rewriteRoute: {},
+    rewriteRoute: identity,
     exclude: [],
-    rewriteKey: function (key) { return key; },
+    rewriteKey: identity,
   }, options || configuration.quickRoutes || {});
+  function rewriteRoute(route) {
+    options.rewriteRoute.forEach(function (keyvalue) {
+      var key = keyvalue[0];
+      var value = keyvalue[1];
+      if (key instanceof RegExp) {
+        if (key.test(route)) { route = route.replace(key, value); }
+      } else {
+        if (key === route) { route = value; }
+      }
+    })
+    return route;
+  }
   return getApi().then(function (api) {
     var genRoutes = {};
+    var reverseRoutes = [];
     function addAction(route, action) {
-      var rewritten = options.rewriteRoute[route] || route;
+      var rewritten = rewriteRoute(route);
       if (!options.nolog) {
         if (rewritten != route) {
           console.log("Generate route GET", rewritten, " (" + route + ")");
@@ -23,10 +40,15 @@ exports.quickRoutes = function (app, options) {
     }
     api.quickRoutes.forEach(function (quickRoute) {
       if (!quickRoute.enabled) return;
+      var routeStats = {static: 0, dynamic: 0};
       var route = '/' + quickRoute.fragments.map(function (fragment) {
         switch (fragment.kind) {
-        case "static": return fragment.value;
-        case "dynamic": return ':' + options.rewriteKey(fragment.key);
+        case "static":
+          routeStats.static++;
+          return fragment.value;
+        case "dynamic":
+          routeStats.dynamic++;
+          return ':' + options.rewriteKey(fragment.key);
         default:
           console.log('Unknown fragment kind: ', fragment);
         }
@@ -34,10 +56,12 @@ exports.quickRoutes = function (app, options) {
       if (options.only && options.only.indexOf(route) < 0) return;
       if (options.exclude.indexOf(route) >= 0) return;
 
+      var fetchersStats = {singleton: 0, all: 0, withUid: 0};
       var fetchers = quickRoute.fetchers.map(function (fetcher) {
         var fn;
         switch (fetcher.condition && fetcher.condition.kind) {
         case "all":
+          fetchersStats.all++;
           fn = function (api, req) {
             var queryOpts = {};
             if (fetcher.condition.sort) {
@@ -52,11 +76,13 @@ exports.quickRoutes = function (app, options) {
           };
           break;
         case "singleton":
+          fetchersStats.singleton++;
           fn = function (api) {
             return api.getSingle(fetcher.mask);
           };
           break;
         case "withUid":
+          fetchersStats.withUid++;
           var key = options.rewriteKey(fetcher.condition.key);
           fn = function (api, req) {
             return api.getByUID(fetcher.mask, req.params[key]);
@@ -89,13 +115,54 @@ exports.quickRoutes = function (app, options) {
         }).catch(exports.onError(res));
 
       });
+
+      if (
+        routeStats.dynamic == 0 &&
+        fetchersStats.singleton == 1 && fetchersStats.withUid == 0
+      ) {
+        var fetcher = quickRoute.fetchers.find(function (fetcher) {
+          return fetcher.condition.kind == "singleton";
+        });
+        reverseRoutes.push(function (doc) {
+          if (doc.type === fetcher.mask) { return route; }
+        })
+      }
+      if (
+        routeStats.dynamic == 1 &&
+        fetchersStats.withUid == 1
+      ) {
+        var fetcher = quickRoute.fetchers.find(function (fetcher) {
+          return fetcher.condition.kind == "withUid";
+        });
+        reverseRoutes.push(function (doc) {
+          if (doc.type === fetcher.mask) {
+            return '/' + quickRoute.fragments.map(function (fragment) {
+              switch (fragment.kind) {
+              case "static": return fragment.value;
+              case "dynamic": return encodeURIComponent(doc.uid);
+              default: return undefined;
+              }
+            }).filter(function (el) { return !!el; }).join('/');
+          }
+        })
+      }
+
     });
     if (!options.nopreview) {
       addAction('/preview', exports.preview);
     }
-    return {
-      quickRoutes: genRoutes,
+    var reverseRouter = function (doc) {
+      var route;
+      for (fn of reverseRoutes) {
+        route = fn(doc);
+        if (route) { return rewriteRoute(route); }
+      }
     };
+    initialized = {
+      quickRoutes: genRoutes,
+      reverseRouter: reverseRouter,
+    }
+    return initialized;
   }).catch(function (err) { console.error(err); });
 };
 
@@ -172,9 +239,19 @@ exports.onError = function (res) {
 // Returns a Promise
 exports.api = function (res) {
   // So we can use this information in the views
+  var linkResolver = configuration.linkResolver;
+  if (!linkResolver && initialized) {
+    linkResolver = function (doc) {
+      var route = initialized.reverseRouter(doc);
+      if (route) { return route; }
+      return '/';
+    }
+  }
+
   res.locals.ctx = {
     endpoint: configuration.apiEndpoint,
-    linkResolver: configuration.linkResolver
+    linkResolver: linkResolver,
+    reverseRouter: initialized && initialized.reverseRouter,
   };
   return getApi();
 };

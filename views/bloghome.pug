@@ -17,7 +17,7 @@ block body
       for post in posts
         div.blog-post(data-wio-id=post.id)
           h2
-            a(href=ctx.linkResolver(post))
+            a(href=ctx.linkResolver(post, ctx))
               != post.getText('post.title') || 'Untitled'
           p.blog-post-meta
             - var date = post.getDate("post.date");
